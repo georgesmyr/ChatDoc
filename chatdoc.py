@@ -26,15 +26,14 @@ def load_data():
           Keep your answers technical and based on facts – do not hallucinate features."
         """
         service_context = ServiceContext.from_defaults(llm=OpenAI(model="gpt-3.5-turbo", temperature=0.5,
-                                                                  system_prompt=system_prompt))
-        index = VectorStoreIndex.from_documents(docs, service_context=service_context)
+                                                                  system_prompt=system_prompt), chunk_size=512)
+        index = VectorStoreIndex.from_documents(docs, service_context=service_context, show_progress=True)
         return index
 
 
 index = load_data()
 
 chat_engine = index.as_chat_engine(chat_mode="condense_question", verbose=True)
-
 
 # Prompt for user input and save to chat history
 if prompt := st.chat_input("Your question"):
