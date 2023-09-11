@@ -1,3 +1,5 @@
+.idea
+.streamlit
 .DS_Store
 secrets.toml
-.idea
+
