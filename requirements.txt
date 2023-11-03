@@ -1,3 +1,8 @@
-streamlit
 langchain
-pinecone-client
+pinecone_client
+streamlit
+unstructured
+unstructured[pdf]
+openai
+chromadb
+tiktoken
