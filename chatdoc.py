@@ -1,56 +1,134 @@
+import os, tempfile
+import pinecone
+from pathlib import Path
+
+from langchain.chains import RetrievalQA, ConversationalRetrievalChain
+from langchain.embeddings import OpenAIEmbeddings
+from langchain.vectorstores import Chroma
+from langchain import OpenAI
+from langchain.llms.openai import OpenAIChat
+from langchain.document_loaders import DirectoryLoader
+from langchain.text_splitter import CharacterTextSplitter
+from langchain.vectorstores import Chroma, Pinecone
+from langchain.embeddings.openai import OpenAIEmbeddings
+from langchain.memory import ConversationBufferMemory
+from langchain.memory.chat_message_histories import StreamlitChatMessageHistory
+
 import streamlit as st
-from llama_index import VectorStoreIndex, ServiceContext, Document
-from llama_index.llms import OpenAI
-import openai
-from llama_index import SimpleDirectoryReader
-
-# Set OpenAI API key
-openai.api_key = st.secrets.openai_key
-st.header("Chat with the docs.")
-
-# Initialize the chat message history
-if "messages" not in st.session_state.keys():
-    st.session_state.messages = [
-        {"role": "assistant", "content": "Ask me something about the document you have provided me with."}
-    ]
 
 
-@st.cache_resource(show_spinner=False)
-def load_data():
-    with st.spinner(text="Loading and indexing the Streamlit docs – hang tight! This should take 1-2 minutes."):
-        reader = SimpleDirectoryReader(input_dir="./data", recursive=True)
-        docs = reader.load_data()
-        system_prompt = """
-        "You are an expert on the Streamlit Python library and your job is to answer technical questions.
-         Assume that all questions are related to the Streamlit Python library.
-          Keep your answers technical and based on facts – do not hallucinate features."
-        """
-        service_context = ServiceContext.from_defaults(llm=OpenAI(model="gpt-3.5-turbo", temperature=0.5,
-                                                                  system_prompt=system_prompt), chunk_size=512)
-        index = VectorStoreIndex.from_documents(docs, service_context=service_context, show_progress=True)
-        return index
+TMP_DIR = Path(__file__).resolve().parent.joinpath('data', 'tmp')
+LOCAL_VECTOR_STORE_DIR = Path(__file__).resolve().parent.joinpath('data', 'vector_store')
+st.set_page_config(page_title="RAG")
+st.title("Retrieval Augmented Generation Engine")
 
 
-index = load_data()
+# def load_documents():
+#     loader = DirectoryLoader(TMP_DIR.as_posix(), glob='**/*.pdf')
+#     documents = loader.load()
+#     return documents
 
-chat_engine = index.as_chat_engine(chat_mode="condense_question", verbose=True)
+# def split_documents(documents):
+#     text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
+#     texts = text_splitter.split_documents(documents)
+#     return texts
 
-# Prompt for user input and save to chat history
-if prompt := st.chat_input("Your question"):
-    st.session_state.messages.append({"role": "user", "content": prompt})
+# def embeddings_on_local_vectordb(texts):
+#     vectordb = Chroma.from_documents(texts, embedding=OpenAIEmbeddings(),
+#                                      persist_directory=LOCAL_VECTOR_STORE_DIR.as_posix())
+#     vectordb.persist()
+#     retriever = vectordb.as_retriever(search_kwargs={'k': 7})
+#     return retriever
 
-# Display the prior chat messages
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.write(message["content"])
+# def embeddings_on_pinecone(texts):
+#     pinecone.init(api_key=st.session_state.pinecone_api_key, environment=st.session_state.pinecone_env)
+#     embeddings = OpenAIEmbeddings(openai_api_key=st.session_state.openai_api_key)
+#     vectordb = Pinecone.from_documents(texts, embeddings, index_name=st.session_state.pinecone_index)
+#     retriever = vectordb.as_retriever()
+#     return retriever
 
-# If last message is not from assistant, generate a new response
-if st.session_state.messages[-1]["role"] != "assistant":
-    with st.chat_message("assistant"):
-        with st.spinner("Thinking..."):
-            response = chat_engine.chat(prompt)
-            st.write(response.response)
-            message = {"role": "assistant", "content": response.response}
-            st.session_state.messages.append(message)  # Add response to message history
+# def query_llm(retriever, query):
+#     qa_chain = ConversationalRetrievalChain.from_llm(
+#         llm=OpenAIChat(openai_api_key=st.session_state.openai_api_key),
+#         retriever=retriever,
+#         return_source_documents=True,
+#     )
+#     result = qa_chain({'question': query, 'chat_history': st.session_state.messages})
+#     result = result['answer']
+#     st.session_state.messages.append((query, result))
+#     return result
+
+# def input_fields():
+#     with st.sidebar:
+#         if "openai_api_key" in st.secrets:
+#             st.session_state.openai_api_key = st.secrets.openai_api_key
+#         else:
+#             st.session_state.openai_api_key = st.text_input("OpenAI API key", type="password")
+#         if "pinecone_api_key" in st.secrets:
+#             st.session_state.pinecone_api_key = st.secrets.pinecone_api_key
+#         else: 
+#             st.session_state.pinecone_api_key = st.text_input("Pinecone API key", type="password")
+#         if "pinecone_env" in st.secrets:
+#             st.session_state.pinecone_env = st.secrets.pinecone_env
+#         else:
+#             st.session_state.pinecone_env = st.text_input("Pinecone environment")
+#         #
+#         if "pinecone_index" in st.secrets:
+#             st.session_state.pinecone_index = st.secrets.pinecone_index
+#         else:
+#             st.session_state.pinecone_index = st.text_input("Pinecone index name")
+#     #
+#     st.session_state.pinecone_db = st.toggle('Use Pinecone Vector DB')
+#     #
+#     st.session_state.source_docs = st.file_uploader(label="Upload Documents", type="pdf", accept_multiple_files=True)
+#     #
 
 
+# def process_documents():
+#     if not st.session_state.openai_api_key or not st.session_state.pinecone_api_key or not st.session_state.pinecone_env or not st.session_state.pinecone_index or not st.session_state.source_docs:
+#         st.warning(f"Please upload the documents and provide the missing fields.")
+#     else:
+#         try:
+#             for source_doc in st.session_state.source_docs:
+#                 #
+#                 with tempfile.NamedTemporaryFile(delete=False, dir=TMP_DIR.as_posix(), suffix='.pdf') as tmp_file:
+#                     tmp_file.write(source_doc.read())
+#                 #
+#                 documents = load_documents()
+#                 #
+#                 for _file in TMP_DIR.iterdir():
+#                     temp_file = TMP_DIR.joinpath(_file)
+#                     temp_file.unlink()
+#                 #
+#                 texts = split_documents(documents)
+#                 #
+#                 if not st.session_state.pinecone_db:
+#                     st.session_state.retriever = embeddings_on_local_vectordb(texts)
+#                 else:
+#                     st.session_state.retriever = embeddings_on_pinecone(texts)
+#         except Exception as e:
+#             st.error(f"An error occurred: {e}")
+
+# def boot():
+#     #
+#     input_fields()
+#     #
+#     st.button("Submit Documents", on_click=process_documents)
+#     #
+#     if "messages" not in st.session_state:
+#         st.session_state.messages = []    
+#     #
+#     for message in st.session_state.messages:
+#         st.chat_message('human').write(message[0])
+#         st.chat_message('ai').write(message[1])    
+#     #
+#     if query := st.chat_input():
+#         st.chat_message("human").write(query)
+#         response = query_llm(st.session_state.retriever, query)
+#         st.chat_message("ai").write(response)
+
+if __name__ == '__main__':
+    #
+    # boot()
+    print(TMP_DIR)
+    print(LOCAL_VECTOR_STORE_DIR)
